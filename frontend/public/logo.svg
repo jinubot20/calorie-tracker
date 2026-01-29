@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a855f7;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect x="0" y="0" width="512" height="512" rx="120" fill="url(#grad)" />
+  
+  <!-- Minimalist Spoon -->
+  <g transform="translate(256, 256) rotate(-10) translate(-256, -256)">
+    <!-- Handle -->
+    <line x1="340" y1="180" x2="440" y2="80" stroke="white" stroke-width="28" stroke-linecap="round" />
+    <!-- Bowl -->
+    <ellipse cx="230" cy="290" rx="90" ry="120" transform="rotate(-45, 230, 290)" fill="none" stroke="white" stroke-width="28" />
+    <!-- Spark / Energy Flame -->
+    <path d="M230 350 C180 290 230 210 230 190 C230 210 280 290 230 350 Z" fill="white" />
+  </g>
+</svg>
