@@ -37,6 +37,10 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     If multiple images are provided, they represent different parts of the SAME meal. Calculate the total for everything shown.
     {desc_part}
     
+    CRITICAL INSTRUCTION FOR ACCURACY:
+    Look for common reference objects in the photo (like a fork, spoon, or human hand/palm) to judge the scale and volume of the food. 
+    Use these objects as a "ruler" to provide more accurate estimates. If no reference object is visible, use standard plate/bowl sizes as context.
+    
     Provide the response strictly as a JSON object:
     {{
       "food": "Food Name",

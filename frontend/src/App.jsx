@@ -437,31 +437,31 @@ const App = () => {
         className="hidden" 
       />
 
-      {/* Slim Glass Header */}
-      <div className="sticky top-0 z-20 backdrop-blur-xl bg-slate-900/80 px-6 py-3 border-b border-slate-800 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-[#0F172A] rounded-lg flex items-center justify-center shadow-lg overflow-hidden border border-indigo-500/20">
+      {/* Glass Header */}
+      <div className="sticky top-0 z-20 backdrop-blur-xl bg-slate-900/80 px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#0F172A] rounded-xl flex items-center justify-center shadow-lg overflow-hidden border border-indigo-500/20">
              <img src="/logo.png" className="w-full h-full object-cover" alt="Fuel Logo" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight">
+            <h1 className="text-base font-bold tracking-tight">
               {isPublicView ? `${data.user_name}'s Fuel` : `Hi, ${user?.name || 'User'}`}
             </h1>
           </div>
         </div>
         {!isPublicView && (
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             <button 
               onClick={() => setShowSettings(true)}
-              className="p-1.5 bg-slate-800/50 rounded-lg text-slate-400 hover:text-white transition-colors"
+              className="p-2.5 bg-slate-800/50 rounded-xl text-slate-400 hover:text-white transition-colors"
             >
-              <Settings size={16} />
+              <Settings size={20} />
             </button>
             <button 
               onClick={handleLogout}
-              className="p-1.5 bg-slate-800/50 rounded-lg text-slate-400 hover:text-red-400 transition-colors"
+              className="p-2.5 bg-slate-800/50 rounded-xl text-slate-400 hover:text-red-400 transition-colors"
             >
-              <LogOut size={16} />
+              <LogOut size={20} />
             </button>
           </div>
         )}
@@ -588,6 +588,19 @@ const App = () => {
                 <span>C:{day.totals.carbs}g</span>
                 <span>F:{day.totals.fat}g</span>
               </div>
+
+              {/* Daily Consumption Pattern (Past) */}
+              {day.ai_summary && day.display_date !== "Today" && (
+                <div className="mt-4 mb-6 bg-indigo-600/10 border-l-4 border-indigo-500 p-5 rounded-2xl relative overflow-hidden">
+                  <div className="flex items-center gap-2 mb-2 text-indigo-400">
+                    <Info size={14} />
+                    <h2 className="text-[10px] font-black uppercase tracking-widest">Consumption Pattern</h2>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed font-medium italic">
+                    "{day.ai_summary}"
+                  </p>
+                </div>
+              )}
 
               {/* Meals for this day */}
               <div className="space-y-4">
@@ -791,7 +804,10 @@ const App = () => {
 
               {/* Photo Upload Section */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] block mb-3">Food Photos</label>
+                <div className="flex justify-between items-end mb-3">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] block">Food Photos</label>
+                  <span className="text-[8px] font-bold text-indigo-400 uppercase bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">Tip: Include a fork for scale</span>
+                </div>
                 <div className="grid grid-cols-3 gap-3">
                   {previews.map((src, idx) => (
                     <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-800">

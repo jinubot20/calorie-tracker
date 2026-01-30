@@ -156,9 +156,12 @@ def get_public_stats(token: str, db: Session = Depends(database.get_db)):
     sorted_meals = sorted(user.meals, key=lambda x: x.timestamp, reverse=True)
     grouped_history = []
     
-    # Fetch all daily feedbacks for this user
+    # Fetch all daily feedbacks and summaries for this user
     all_feedbacks = db.query(database.DailyFeedback).filter(database.DailyFeedback.user_id == user.id).all()
     feedback_map = {f.date: f.content for f in all_feedbacks}
+    
+    all_summaries = db.query(database.DailySummary).filter(database.DailySummary.user_id == user.id).all()
+    summary_map = {s.date: s.content for s in all_summaries}
     
     for date, items in groupby(sorted_meals, key=lambda x: x.timestamp.date()):
         date_str = date.isoformat()
@@ -167,6 +170,7 @@ def get_public_stats(token: str, db: Session = Depends(database.get_db)):
             "date": date_str,
             "display_date": "Today" if date == today_sg else date.strftime("%d %b, %Y"),
             "trainer_feedback": feedback_map.get(date_str),
+            "ai_summary": summary_map.get(date_str) or (user.cached_summary if date_str == user.summary_date else None),
             "totals": {
                 "calories": sum(m.calories for m in meals_list),
                 "protein": sum(m.protein for m in meals_list),
@@ -359,16 +363,6 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
     today_str = today_sg.isoformat()
     meals_today = [m for m in current_user.meals if m.timestamp.date() == today_sg]
     
-    # Simple Caching for AI Summary
-    if current_user.summary_date == today_str and current_user.cached_summary:
-        daily_summary = current_user.cached_summary
-    else:
-        # Generate new one as a Coach and save
-        daily_summary = ai_engine.generate_daily_summary(meals_today, current_user.daily_target)
-        current_user.cached_summary = daily_summary
-        current_user.summary_date = today_str
-        db.commit()
-
     # Calculate 7-day trend
     history_trend = []
     for i in range(6, -1, -1):
@@ -384,17 +378,37 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
     sorted_meals = sorted(current_user.meals, key=lambda x: x.timestamp, reverse=True)
     grouped_history = []
     
-    # Fetch all daily feedbacks for this user to avoid multiple queries
+    # Fetch all daily feedbacks and summaries for this user to avoid multiple queries
     all_feedbacks = db.query(database.DailyFeedback).filter(database.DailyFeedback.user_id == current_user.id).all()
     feedback_map = {f.date: f.content for f in all_feedbacks}
     
+    all_summaries = db.query(database.DailySummary).filter(database.DailySummary.user_id == current_user.id).all()
+    summary_map = {s.date: s.content for s in all_summaries}
+    
+    # 1. Get/Generate Today's AI Summary
+    today_summary = summary_map.get(today_str)
+    
+    if not meals_today:
+        today_summary = "Log your first meal to get insights!"
+    elif not today_summary:
+        try:
+            today_summary = ai_engine.generate_daily_summary(meals_today, current_user.daily_target)
+            new_summary = database.DailySummary(user_id=current_user.id, date=today_str, content=today_summary)
+            db.add(new_summary)
+            db.commit()
+            summary_map[today_str] = today_summary
+        except Exception:
+            today_summary = "Generating your daily insights..."
+
     for date, items in groupby(sorted_meals, key=lambda x: x.timestamp.date()):
         date_str = date.isoformat()
         meals_list = list(items)
+        
         grouped_history.append({
             "date": date_str,
             "display_date": "Today" if date == today_sg else date.strftime("%d %b, %Y"),
             "trainer_feedback": feedback_map.get(date_str),
+            "ai_summary": summary_map.get(date_str),
             "totals": {
                 "calories": sum(m.calories for m in meals_list),
                 "protein": sum(m.protein for m in meals_list),
@@ -424,7 +438,7 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
         "protein": sum(m.protein for m in meals_today),
         "carbs": sum(m.carbs for m in meals_today),
         "fat": sum(m.fat for m in meals_today),
-        "daily_summary": daily_summary,
+        "daily_summary": today_summary,
         "grouped_history": grouped_history[:7], # Last 7 days
         "trend": history_trend
     }
@@ -442,7 +456,18 @@ def delete_meal(
     
     if not meal:
         raise HTTPException(status_code=404, detail="Meal not found")
+    
+    # Identify the date of the meal to clear the daily summary
+    meal_date = meal.timestamp.date().isoformat()
+    
     db.delete(meal)
+    
+    # Clear the new persistent summary for that specific date
+    db.query(database.DailySummary).filter(
+        database.DailySummary.user_id == current_user.id,
+        database.DailySummary.date == meal_date
+    ).delete()
+    
     current_user.cached_summary = None
     db.commit()
     return {"status": "success"}
@@ -461,19 +486,32 @@ def update_settings(
     db.commit()
     return {"status": "success"}
 
+# Custom StaticFiles to add Cache-Control headers
+class CachedStaticFiles(StaticFiles):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
 # Serve Uploads
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/uploads", CachedStaticFiles(directory="uploads"), name="uploads")
 
 # Serve Frontend
 frontend_path = os.path.join(os.getcwd(), "../frontend/dist")
 if os.path.exists(frontend_path):
     # Mount specific assets
-    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+    app.mount("/assets", CachedStaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
 
     # Serve root-level static files (logo, manifest, etc.)
     @app.get("/logo.png")
     async def serve_logo():
-        return FileResponse(os.path.join(frontend_path, "logo.png"))
+        return FileResponse(
+            os.path.join(frontend_path, "logo.png"),
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
 
     @app.get("/manifest.json")
     async def serve_manifest():

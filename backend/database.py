@@ -51,6 +51,13 @@ class DailyFeedback(Base):
     date = Column(String, index=True) # YYYY-MM-DD
     content = Column(String, nullable=True)
 
+class DailySummary(Base):
+    __tablename__ = "daily_summaries"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    date = Column(String, index=True) # YYYY-MM-DD
+    content = Column(String, nullable=True)
+
 from sqlalchemy import create_engine
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
