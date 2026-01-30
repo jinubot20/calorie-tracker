@@ -38,10 +38,10 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     {desc_part}
     
     CRITICAL INSTRUCTION FOR ACCURACY:
-    1. Look for common reference objects in the photo (like a fork, spoon, or human hand/palm) to judge the scale and volume of the food. 
-    2. Use these objects as a "ruler" to provide more accurate estimates. 
-    3. Analyze the user's description for clues about portion size (e.g., "half portion", "large bowl").
-    4. Provide a breakdown of each distinct food item/drink found in the meal with its estimated portion size (e.g., 1.0 for standard, 0.5 for half, 1.5 for large).
+    1. PRIMARY SUBJECT FOCUS: Focus ONLY on the food/drinks that are the main subject of the photo (usually centered and in focus). Ignore background items, plates at the far edges, or partially visible drinks/cutlery at the top corners unless they are explicitly mentioned in the user's description.
+    2. REFERENCE OBJECTS: Look for common objects (like a fork, spoon, or human hand/palm) to judge the scale and volume of the food. 
+    3. PORTION CLUES: Analyze the user's description for clues about portion size (e.g., "half portion", "large bowl").
+    4. BREAKDOWN: Provide a breakdown of each distinct food item/drink found in the meal with its estimated portion size (e.g., 1.0 for standard, 0.5 for half, 1.5 for large).
     
     Provide the response strictly as a JSON object:
     {{
