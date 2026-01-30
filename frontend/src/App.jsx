@@ -17,7 +17,6 @@ const App = () => {
   const [newTarget, setNewTarget] = useState(2000);
   const [newPassword, setNewPassword] = useState('');
   const [mealDescription, setMealDescription] = useState('');
-  const [portion, setPortion] = useState(100);
   const [mealType, setMealType] = useState('Lunch');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
@@ -49,7 +48,6 @@ const App = () => {
     const suggestion = getSuggestedMealType(data.grouped_history);
     setMealType(suggestion);
     setMealDescription('');
-    setPortion(100);
     setSelectedFiles([]);
     setPreviews([]);
     setShowUploadModal(true);
@@ -276,7 +274,6 @@ const App = () => {
       formData.append('files', file);
     });
     formData.append('description', mealDescription);
-    formData.append('portion', portion / 100);
     formData.append('meal_type', mealType);
 
     try {
@@ -302,7 +299,6 @@ const App = () => {
 
   const resetUploadForm = () => {
     setMealDescription('');
-    setPortion(100);
     setMealType('Lunch');
     setSelectedFiles([]);
     setPreviews([]);
@@ -755,6 +751,19 @@ const App = () => {
                         <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded-md border border-slate-700">{meal.meal_type || 'Meal'}</span>
                         <h3 className="font-bold text-slate-100 text-base truncate">{meal.food}</h3>
                       </div>
+                      
+                      {/* Meal Item Breakdown */}
+                      {meal.items && meal.items.length > 0 && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 mb-2">
+                          {meal.items.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-1 text-[10px] font-medium text-slate-400">
+                              <span className="text-indigo-400 font-bold">{item.portion}x</span>
+                              <span className="truncate max-w-[100px]">{item.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 mt-1 mb-2">
                         <Clock size={10} className="text-slate-500" />
                         <span className="text-[10px] text-slate-500 font-bold uppercase">
@@ -894,6 +903,19 @@ const App = () => {
                     <span className="text-[10px] font-black uppercase px-2 py-1 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700">{selectedMeal.meal_type || 'Meal'}</span>
                   </div>
                   <h2 className="text-2xl font-black text-white leading-tight mb-2 tracking-tight break-words">{selectedMeal.food}</h2>
+                  
+                  {/* Item Breakdown in Modal */}
+                  {selectedMeal.items && selectedMeal.items.length > 0 && (
+                    <div className="flex flex-wrap gap-3 mb-4">
+                      {selectedMeal.items.map((item, idx) => (
+                        <div key={idx} className="px-3 py-1 bg-slate-800 rounded-xl border border-slate-700 flex items-center gap-2 shadow-sm">
+                          <span className="text-indigo-400 font-black text-xs">{item.portion}x</span>
+                          <span className="text-xs font-bold text-slate-300">{item.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 text-slate-500">
                     <Clock size={14} />
                     <span className="text-xs font-bold uppercase">{new Date(selectedMeal.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -1003,25 +1025,6 @@ const App = () => {
                   placeholder="e.g. 2 pieces of fried chicken, some coleslaw and a small mashed potato."
                   className="w-full bg-slate-800/50 border-2 border-slate-800 rounded-3xl px-6 py-4 text-sm font-medium text-white focus:outline-none focus:border-indigo-600 transition-all min-h-[100px] resize-none placeholder:text-slate-600"
                 />
-              </div>
-
-              {/* Portion Slider */}
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Portion Had</label>
-                  <span className="text-indigo-400 font-black text-sm">{portion}%</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <input 
-                    type="range" min="10" max="100" step="5"
-                    value={portion}
-                    onChange={(e) => setPortion(parseInt(e.target.value))}
-                    className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                  />
-                  <div className="p-2 bg-slate-800 rounded-xl text-slate-400">
-                    <Percent size={16} />
-                  </div>
-                </div>
               </div>
               
               <button 

@@ -187,6 +187,7 @@ def get_public_stats(token: str, db: Session = Depends(database.get_db)):
                     "protein": m.protein,
                     "carbs": m.carbs,
                     "fat": m.fat,
+                    "items": json.loads(m.items_json) if m.items_json else [],
                     "trainer_notes": m.trainer_notes,
                     "time": m.timestamp.isoformat(),
                     "images": [f"/uploads/{os.path.basename(p)}" for p in json.loads(m.image_paths)] if m.image_paths and m.image_paths.startswith('[') else []
@@ -257,13 +258,13 @@ async def upload_meal_internal(
                     shutil.copyfileobj(file.file, buffer)
                 saved_paths.append(file_path)
         
-        food_name, cals, p, c, f = ai_engine.estimate_calories(saved_paths if saved_paths else None, description)
+        food_name, cals, p, c, f, items = ai_engine.estimate_calories(saved_paths if saved_paths else None, description)
         
-        # Adjust for portion
-        calories = int(cals * portion)
-        protein = int(p * portion)
-        carbs = int(c * portion)
-        fat = int(f * portion)
+        # We now trust the AI for portion sizing within its calculation
+        calories = int(cals)
+        protein = int(p)
+        carbs = int(c)
+        fat = int(f)
 
         new_meal = database.Meal(
             user_id=user.id,
@@ -275,7 +276,7 @@ async def upload_meal_internal(
             carbs=carbs,
             fat=fat,
             image_paths=json.dumps(saved_paths),
-            portion=portion,
+            items_json=json.dumps(items),
             timestamp=get_sg_time()
         )
         db.add(new_meal)
@@ -297,6 +298,7 @@ async def upload_meal_internal(
             "protein": protein,
             "carbs": carbs,
             "fat": fat,
+            "items": items,
             "total_today": sum(m.calories for m in user.meals if m.timestamp.date() == today_sg)
         }
     except Exception as e:
@@ -327,13 +329,12 @@ async def upload_meal(
                     shutil.copyfileobj(file.file, buffer)
                 saved_paths.append(file_path)
         
-        food_name, cals, p, c, f = ai_engine.estimate_calories(saved_paths if saved_paths else None, description)
+        food_name, cals, p, c, f, items = ai_engine.estimate_calories(saved_paths if saved_paths else None, description)
         
-        # Adjust for portion
-        calories = int(cals * portion)
-        protein = int(p * portion)
-        carbs = int(c * portion)
-        fat = int(f * portion)
+        calories = int(cals)
+        protein = int(p)
+        carbs = int(c)
+        fat = int(f)
 
         new_meal = database.Meal(
             user_id=current_user.id,
@@ -345,7 +346,7 @@ async def upload_meal(
             carbs=carbs,
             fat=fat,
             image_paths=json.dumps(saved_paths),
-            portion=portion,
+            items_json=json.dumps(items),
             timestamp=get_sg_time()
         )
         db.add(new_meal)
@@ -367,6 +368,7 @@ async def upload_meal(
             "protein": protein,
             "carbs": carbs,
             "fat": fat,
+            "items": items,
             "total_today": sum(m.calories for m in current_user.meals if m.timestamp.date() == today_sg)
         }
     except Exception as e:
@@ -448,6 +450,7 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
                     "protein": m.protein,
                     "carbs": m.carbs,
                     "fat": m.fat,
+                    "items": json.loads(m.items_json) if m.items_json else [],
                     "time": m.timestamp.isoformat(),
                     "images": [f"/uploads/{os.path.basename(p)}" for p in json.loads(m.image_paths)] if m.image_paths and m.image_paths.startswith('[') else []
                 }

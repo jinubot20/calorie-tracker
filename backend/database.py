@@ -37,6 +37,7 @@ class Meal(Base):
     fat = Column(Integer, default=0)
     image_paths = Column(String, nullable=True) # JSON string of paths
     portion = Column(Float, default=1.0)
+    items_json = Column(String, nullable=True) # JSON list of {name, portion}
     timestamp = Column(DateTime, default=datetime.utcnow)
     
     # New field for Trainer/Public comments

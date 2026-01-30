@@ -38,16 +38,22 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     {desc_part}
     
     CRITICAL INSTRUCTION FOR ACCURACY:
-    Look for common reference objects in the photo (like a fork, spoon, or human hand/palm) to judge the scale and volume of the food. 
-    Use these objects as a "ruler" to provide more accurate estimates. If no reference object is visible, use standard plate/bowl sizes as context.
+    1. Look for common reference objects in the photo (like a fork, spoon, or human hand/palm) to judge the scale and volume of the food. 
+    2. Use these objects as a "ruler" to provide more accurate estimates. 
+    3. Analyze the user's description for clues about portion size (e.g., "half portion", "large bowl").
+    4. Provide a breakdown of each distinct food item/drink found in the meal with its estimated portion size (e.g., 1.0 for standard, 0.5 for half, 1.5 for large).
     
     Provide the response strictly as a JSON object:
     {{
-      "food": "Food Name",
+      "food": "Overall Meal Name",
       "calories": 0,
       "protein": 0,
       "carbs": 0,
-      "fat": 0
+      "fat": 0,
+      "items": [
+        {{"name": "item 1", "portion": 1.0}},
+        {{"name": "item 2", "portion": 0.5}}
+      ]
     }}
     """
     contents.insert(0, prompt)
@@ -61,7 +67,8 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
             data.get("calories", 0),
             data.get("protein", 0),
             data.get("carbs", 0),
-            data.get("fat", 0)
+            data.get("fat", 0),
+            data.get("items", [])
         )
     except Exception as e:
         error_msg = str(e)
@@ -69,7 +76,7 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
             # Signal the caller that we hit the AI quota limit
             raise Exception("AI_QUOTA_REACHED")
         print(f"Error estimating calories: {e}")
-        return "Unknown", 0, 0, 0, 0
+        return "Unknown", 0, 0, 0, 0, []
 
 def generate_daily_summary(meals_list, target_calories):
     """
