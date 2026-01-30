@@ -13,7 +13,7 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     """
     Analyzes multiple images and/or description to estimate calories and macros.
     """
-    # Using gemini-2.5-flash as requested
+    # Using gemini-2.5-flash for best accuracy
     model = genai.GenerativeModel('gemini-2.5-flash')
     
     contents = []
@@ -108,5 +108,7 @@ def generate_daily_summary(meals_list, target_calories):
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
-    except Exception:
-        return "You're doing great! Keep tracking your meals to see patterns."
+    except Exception as e:
+        print(f"Error generating daily summary: {e}")
+        # Return None or raise so the caller doesn't save a "fake" successful summary
+        return None

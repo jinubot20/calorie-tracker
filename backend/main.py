@@ -189,7 +189,7 @@ def get_public_stats(token: str, db: Session = Depends(database.get_db)):
                     "fat": m.fat,
                     "trainer_notes": m.trainer_notes,
                     "time": m.timestamp.isoformat(),
-                    "image": f"/uploads/{os.path.basename(json.loads(m.image_paths)[0])}" if m.image_paths and m.image_paths.startswith('[') and json.loads(m.image_paths) else None
+                    "images": [f"/uploads/{os.path.basename(p)}" for p in json.loads(m.image_paths)] if m.image_paths and m.image_paths.startswith('[') else []
                 }
                 for m in meals_list
             ]
@@ -207,17 +207,23 @@ def get_public_stats(token: str, db: Session = Depends(database.get_db)):
     }
 
 @app.post("/public/daily-feedback/{token}/{date}")
-def update_daily_feedback(token: str, date: str, note: str = Form(...), db: Session = Depends(database.get_db)):
+def update_daily_feedback(token: str, date: str, note: Optional[str] = Form(None), db: Session = Depends(database.get_db)):
     user = db.query(database.User).filter(database.User.share_token == token, database.User.share_enabled == 1).first()
     if not user:
         raise HTTPException(status_code=404, detail="Unauthorized")
     
     feedback = db.query(database.DailyFeedback).filter(database.DailyFeedback.user_id == user.id, database.DailyFeedback.date == date).first()
-    if feedback:
-        feedback.content = note
+    
+    if not note or not note.strip():
+        # If the note is empty or just whitespace, delete the feedback entry
+        if feedback:
+            db.delete(feedback)
     else:
-        feedback = database.DailyFeedback(user_id=user.id, date=date, content=note)
-        db.add(feedback)
+        if feedback:
+            feedback.content = note
+        else:
+            feedback = database.DailyFeedback(user_id=user.id, date=date, content=note)
+            db.add(feedback)
     
     db.commit()
     return {"status": "success"}
@@ -273,6 +279,14 @@ async def upload_meal_internal(
             timestamp=get_sg_time()
         )
         db.add(new_meal)
+        
+        # Clear the persistent summary for today so it regenerates with the new data
+        today_str = get_sg_time().date().isoformat()
+        db.query(database.DailySummary).filter(
+            database.DailySummary.user_id == user.id,
+            database.DailySummary.date == today_str
+        ).delete()
+        
         user.cached_summary = None
         db.commit()
         
@@ -335,6 +349,14 @@ async def upload_meal(
             timestamp=get_sg_time()
         )
         db.add(new_meal)
+        
+        # Clear the persistent summary for today so it regenerates with the new data
+        today_str = get_sg_time().date().isoformat()
+        db.query(database.DailySummary).filter(
+            database.DailySummary.user_id == current_user.id,
+            database.DailySummary.date == today_str
+        ).delete()
+        
         current_user.cached_summary = None 
         db.commit()
         
@@ -391,14 +413,15 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
     if not meals_today:
         today_summary = "Log your first meal to get insights!"
     elif not today_summary:
-        try:
-            today_summary = ai_engine.generate_daily_summary(meals_today, current_user.daily_target)
-            new_summary = database.DailySummary(user_id=current_user.id, date=today_str, content=today_summary)
+        # Try to generate
+        generated = ai_engine.generate_daily_summary(meals_today, current_user.daily_target)
+        if generated:
+            new_summary = database.DailySummary(user_id=current_user.id, date=today_str, content=generated)
             db.add(new_summary)
             db.commit()
-            summary_map[today_str] = today_summary
-        except Exception:
-            today_summary = "Generating your daily insights..."
+            today_summary = generated
+        else:
+            today_summary = "Generating your daily insights (AI is a bit busy)..."
 
     for date, items in groupby(sorted_meals, key=lambda x: x.timestamp.date()):
         date_str = date.isoformat()
@@ -426,7 +449,7 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
                     "carbs": m.carbs,
                     "fat": m.fat,
                     "time": m.timestamp.isoformat(),
-                    "image": f"/uploads/{os.path.basename(json.loads(m.image_paths)[0])}" if m.image_paths and m.image_paths.startswith('[') and json.loads(m.image_paths) else None
+                    "images": [f"/uploads/{os.path.basename(p)}" for p in json.loads(m.image_paths)] if m.image_paths and m.image_paths.startswith('[') else []
                 }
                 for m in meals_list
             ]
@@ -495,6 +518,50 @@ class CachedStaticFiles(StaticFiles):
         response = await super().get_response(path, scope)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
+
+@app.get("/admin/stats")
+def get_admin_stats(db: Session = Depends(database.get_db), current_user: database.User = Depends(auth.get_current_user)):
+    if current_user.email != "jhbong84@gmail.com":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    total_users = db.query(database.User).count()
+    total_meals = db.query(database.Meal).count()
+    
+    # Today's stats
+    today = get_sg_time().date()
+    meals_today = db.query(database.Meal).filter(database.Meal.timestamp >= today).count()
+    
+    # User list with last meal
+    users = db.query(database.User).all()
+    user_list = []
+    for u in users:
+        last_meal = db.query(database.Meal).filter(database.Meal.user_id == u.id).order_by(database.Meal.timestamp.desc()).first()
+        user_list.append({
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "meal_count": len(u.meals),
+            "last_active": last_meal.timestamp.isoformat() if last_meal else "Never"
+        })
+        
+    # Recent logs (last 20)
+    recent_meals = db.query(database.Meal).order_by(database.Meal.timestamp.desc()).limit(20).all()
+    meal_logs = [{
+        "id": m.id,
+        "user": m.owner.name,
+        "food": m.food_name,
+        "calories": m.calories,
+        "time": m.timestamp.isoformat(),
+        "has_image": bool(m.image_paths and m.image_paths != "[]")
+    } for m in recent_meals]
+
+    return {
+        "total_users": total_users,
+        "total_meals": total_meals,
+        "meals_today": meals_today,
+        "users": user_list,
+        "recent_logs": meal_logs
+    }
 
 # Serve Uploads
 app.mount("/uploads", CachedStaticFiles(directory="uploads"), name="uploads")

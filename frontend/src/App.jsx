@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Settings, History, Utensils, Flame, ChevronRight, X, Save, Trash2, Loader2, Mail, Lock, User as UserIcon, LogOut, Info, Clock, Calendar, Plus, Upload, Percent, Share2, Copy, Check, Maximize2, Coffee, Sun, Apple, Moon } from 'lucide-react';
+import { Camera, Settings, History, Utensils, Flame, ChevronRight, X, Save, Trash2, Loader2, Mail, Lock, User as UserIcon, LogOut, Info, Clock, Calendar, Plus, Upload, Percent, Share2, Copy, Check, Maximize2, Coffee, Sun, Apple, Moon, ShieldAlert, BarChart3, Users, ListTodo } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import axios from 'axios';
 
@@ -23,9 +23,43 @@ const App = () => {
   const [previews, setPreviews] = useState([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedMeal, setSelectedMeal] = useState(null);
+
+  const getSuggestedMealType = (currentHistory) => {
+    // Singapore Time check
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const sgHour = (utcHour + 8) % 24;
+    
+    const today = currentHistory.find(d => d.display_date === "Today");
+    const loggedTypes = today ? today.meals.map(m => m.meal_type) : [];
+
+    if (sgHour >= 5 && sgHour < 11) {
+      return loggedTypes.includes("Breakfast") ? "Snacks" : "Breakfast";
+    } else if (sgHour >= 11 && sgHour < 15) {
+      return loggedTypes.includes("Lunch") ? "Snacks" : "Lunch";
+    } else if (sgHour >= 15 && sgHour < 18) {
+      return "Snacks";
+    } else if (sgHour >= 18 && sgHour < 23) {
+      return loggedTypes.includes("Dinner") ? "Snacks" : "Dinner";
+    }
+    return "Snacks";
+  };
+
+  const handleOpenUpload = () => {
+    const suggestion = getSuggestedMealType(data.grouped_history);
+    setMealType(suggestion);
+    setMealDescription('');
+    setPortion(100);
+    setSelectedFiles([]);
+    setPreviews([]);
+    setShowUploadModal(true);
+  };
+
+  const selectedMealRef = useRef(null);
   const [copiedDay, setCopiedDay] = useState(null);
   const [shareConfig, setShareConfig] = useState({ enabled: false, token: null });
   const [isPublicView, setIsPublicView] = useState(false);
+  const [adminData, setAdminStats] = useState(null);
   const fileInputRef = useRef(null);
 
   const mealTypes = [
@@ -138,6 +172,16 @@ const App = () => {
       await axios.post(`/public/daily-feedback/${shareTokenFromUrl}/${date}`, formData);
       fetchPublicData(shareTokenFromUrl);
     } catch (e) { alert("Failed to add feedback"); }
+  };
+
+  const fetchAdminStats = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get('/admin/stats', { headers: { Authorization: `Bearer ${token}` } });
+      setAdminStats(res.data);
+      setView('admin');
+    } catch (e) { alert("Admin access denied"); }
+    finally { setLoading(false); }
   };
 
   const handleLogout = () => {
@@ -322,6 +366,77 @@ const App = () => {
 
   const progress = Math.min((data.consumed / data.target) * 100, 100);
 
+  if (view === 'admin' && adminData) return (
+    <div className="min-h-screen bg-[#0F172A] text-slate-100 p-6">
+      <div className="flex justify-between items-center mb-10">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">Admin Dashboard</h1>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">System Overview</p>
+        </div>
+        <button onClick={() => setView('dashboard')} className="px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold">BACK TO APP</button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-[32px]">
+          <Users className="text-indigo-500 mb-2" size={24} />
+          <span className="block text-3xl font-black">{adminData.total_users}</span>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Users</span>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-[32px]">
+          <BarChart3 className="text-emerald-500 mb-2" size={24} />
+          <span className="block text-3xl font-black">{adminData.total_meals}</span>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Logs</span>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-[32px]">
+          <Flame className="text-amber-500 mb-2" size={24} />
+          <span className="block text-3xl font-black">{adminData.meals_today}</span>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Logs Today</span>
+        </div>
+      </div>
+
+      <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><Users size={20} className="text-indigo-500"/> User Directory</h2>
+      <div className="bg-slate-900 border border-slate-800 rounded-[32px] overflow-hidden mb-10">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-800/50 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+            <tr>
+              <th className="px-6 py-4">Name</th>
+              <th className="px-6 py-4">Email</th>
+              <th className="px-6 py-4 text-center">Logs</th>
+              <th className="px-6 py-4">Last Active</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800">
+            {adminData.users.map(u => (
+              <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
+                <td className="px-6 py-4 font-bold">{u.name}</td>
+                <td className="px-6 py-4 text-slate-400">{u.email}</td>
+                <td className="px-6 py-4 text-center font-black text-indigo-400">{u.meal_count}</td>
+                <td className="px-6 py-4 text-xs text-slate-500">{new Date(u.last_active).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><ListTodo size={20} className="text-emerald-500"/> Recent Activity</h2>
+      <div className="space-y-4">
+        {adminData.recent_logs.map(log => (
+          <div key={log.id} className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex justify-between items-center">
+            <div>
+              <p className="text-xs font-black text-indigo-500 uppercase tracking-tighter">{log.user}</p>
+              <p className="font-bold text-slate-200">{log.food}</p>
+              <p className="text-[10px] text-slate-500">{new Date(log.time).toLocaleString()}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-black text-white">{log.calories} kcal</p>
+              {log.has_image && <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded uppercase font-black">Image ✓</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   if (view === 'loading') return (
     <div className="h-screen bg-slate-950 flex items-center justify-center">
       <Loader2 className="animate-spin text-indigo-500" size={32} />
@@ -451,6 +566,14 @@ const App = () => {
         </div>
         {!isPublicView && (
           <div className="flex gap-2">
+            {user?.email === 'jhbong84@gmail.com' && (
+              <button 
+                onClick={fetchAdminStats}
+                className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all"
+              >
+                <ShieldAlert size={20} />
+              </button>
+            )}
             <button 
               onClick={() => setShowSettings(true)}
               className="p-2.5 bg-slate-800/50 rounded-xl text-slate-400 hover:text-white transition-colors"
@@ -611,8 +734,15 @@ const App = () => {
                     className="group bg-slate-900/50 border border-slate-800 p-4 rounded-[28px] flex items-center transition-all hover:bg-slate-800/60 hover:border-slate-700 cursor-pointer"
                   >
                     <div className="w-20 h-20 rounded-2xl overflow-hidden mr-4 border-2 border-slate-800 shadow-xl shrink-0 bg-slate-800 flex items-center justify-center relative">
-                      {meal.image ? (
-                        <img src={meal.image} alt={meal.food} className="w-full h-full object-cover" />
+                      {meal.images && meal.images.length > 0 ? (
+                        <>
+                          <img src={meal.images[0]} alt={meal.food} className="w-full h-full object-cover" />
+                          {meal.images.length > 1 && (
+                            <div className="absolute bottom-1 right-1 bg-indigo-600/90 backdrop-blur-sm text-white text-[8px] font-black px-1.5 py-0.5 rounded-md shadow-lg border border-indigo-400">
+                              +{meal.images.length - 1}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <Utensils className="text-slate-600" size={24} />
                       )}
@@ -696,7 +826,7 @@ const App = () => {
             
             <div className="relative">
               <button 
-                onClick={() => { setShowUploadModal(true); resetUploadForm(); }}
+                onClick={handleOpenUpload}
                 disabled={uploading}
                 className={`relative w-16 h-16 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/20 flex items-center justify-center text-white -mt-16 border-4 border-slate-900 transition-all active:scale-95 ${uploading ? 'opacity-50' : 'hover:bg-indigo-500'}`}
               >
@@ -711,13 +841,47 @@ const App = () => {
 
       {/* Meal Detail Modal (Click to Enlarged View) */}
       {selectedMeal && (
-        <div className="fixed inset-0 z-[70] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6">
-          <div className="w-full max-w-lg bg-slate-900 rounded-[40px] border border-slate-800 overflow-hidden animate-in zoom-in duration-300 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="relative aspect-video w-full bg-slate-800">
-              {selectedMeal.image && <img src={selectedMeal.image} className="w-full h-full object-cover" />}
+        <div 
+          onClick={() => setSelectedMeal(null)}
+          className="fixed inset-0 z-[70] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg bg-slate-900 rounded-[40px] border border-slate-800 overflow-hidden animate-in zoom-in duration-300 shadow-2xl max-h-[90vh] overflow-y-auto cursor-default"
+          >
+            <div className="relative w-full bg-slate-950 overflow-hidden">
+              <div className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar">
+                {selectedMeal.images && selectedMeal.images.length > 0 ? (
+                  selectedMeal.images.map((img, i) => (
+                    <div key={i} className="min-w-full snap-center relative flex items-center justify-center overflow-hidden">
+                      {/* Blurred Background Layer */}
+                      <img src={img} className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-30 scale-110" />
+                      {/* Main Image Layer - No fixed aspect ratio, using max-height */}
+                      <img 
+                        src={img} 
+                        className="relative z-10 w-full max-h-[70vh] object-contain shadow-2xl" 
+                        style={{ minHeight: '300px' }}
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <div className="w-full aspect-video flex items-center justify-center">
+                    <Utensils className="text-slate-700" size={48} />
+                  </div>
+                )}
+              </div>
+              
+              {selectedMeal.images?.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 bg-black/30 backdrop-blur-md rounded-full">
+                  {selectedMeal.images.map((_, i) => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/50"></div>
+                  ))}
+                </div>
+              )}
+
               <button 
                 onClick={() => setSelectedMeal(null)}
-                className="absolute top-6 right-6 p-3 bg-black/50 text-white rounded-full backdrop-blur-md hover:bg-black transition-colors"
+                className="absolute top-6 right-6 p-3 bg-black/50 text-white rounded-full backdrop-blur-md hover:bg-black transition-colors z-[80]"
               >
                 <X size={24} />
               </button>
