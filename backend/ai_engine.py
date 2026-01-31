@@ -122,9 +122,10 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         
         CRITICAL INSTRUCTION FOR ACCURACY:
         1. USER TEXT PRIORITY: If the user mentions a quantity or portion (e.g., "half", "1 slice", "2 pieces", "shared"), you MUST use that instead of the visual.
-        2. THE "SLICE" RULE: In the HPB database, items like "Ngoh Hiang" or "Fish Cake" are often defined as a WHOLE ROLL (e.g. 500+ kcal). If the user mentions a "SLICE" or "PIECE", you must adjust the portion significantly downward (e.g. 0.1 to 0.2). Never match a single slice to 1.0 of a whole roll.
-        3. PORTION SCALING: 1.0 = standard serving, 0.5 = half, 1.5 = large.
-        4. PRIMARY FOCUS: Ignore background items or plates belonging to other people.
+        2. THE "SLICE" RULE: Items like "Ngoh Hiang" or "Fish Cake" are often defined as a WHOLE ROLL. If the user mentions a "SLICE", adjust portion to ~0.1 - 0.2.
+        3. THE "DAB" RULE: For condiments like Sambal, Chili, or Soy Sauce, if it is a small side portion (e.g. in a plastic saucer or on the side), adjust portion to ~0.1 (approx 10-15 kcal). Do not treat it as a main dish.
+        4. PORTION SCALING: 1.0 = standard serving, 0.5 = half, 1.5 = large.
+        5. PRIMARY FOCUS: Ignore background items or plates belonging to other people.
         
         HPB CANDIDATES:
         {json.dumps(all_matches)}
