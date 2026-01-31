@@ -293,6 +293,21 @@ const App = () => {
     } catch (err) { alert("Failed to delete."); }
   };
 
+  const rerunMeal = async (mealId) => {
+    if (!confirm("Rerun AI analysis with current logic? This will overwrite previous values.")) return;
+    setLoading(true);
+    try {
+      const res = await axios.post(`/meal/${mealId}/rerun`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setSelectedMeal({ ...selectedMeal, ...res.data.analysis });
+      fetchData(token, true);
+      alert("Analysis updated successfully!");
+    } catch (err) {
+      alert(err.response?.data?.detail || "Rerun failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const saveSettings = async () => {
     try {
       let url = '/settings?';
@@ -391,9 +406,22 @@ const App = () => {
               </div>
             </div>
             {!isPublicView && (
-              <button onClick={() => deleteMeal(meal.id)} className="w-full py-5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-black rounded-3xl transition-all border border-red-500/20 uppercase text-xs tracking-widest">
-                Delete Entry
-              </button>
+              <div className="space-y-4">
+                {user?.email === 'jhbong84@gmail.com' && (
+                  <button 
+                    onClick={() => rerunMeal(meal.id)}
+                    className="w-full py-5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-black rounded-3xl transition-all border border-indigo-500/20 uppercase text-xs tracking-widest flex items-center justify-center gap-2"
+                  >
+                    <Flame size={14} /> Rerun Analysis
+                  </button>
+                )}
+                <button 
+                  onClick={() => deleteMeal(meal.id)} 
+                  className="w-full py-5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-black rounded-3xl transition-all border border-red-500/20 uppercase text-xs tracking-widest"
+                >
+                  Delete Entry
+                </button>
+              </div>
             )}
           </div>
         </div>

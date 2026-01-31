@@ -541,6 +541,36 @@ def get_stats(db: Session = Depends(database.get_db), current_user: database.Use
         "trend": history_trend
     }
 
+@app.post("/meal/{meal_id}/rerun")
+async def rerun_meal_analysis(
+    meal_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: database.User = Depends(auth.get_current_user)
+):
+    if current_user.email != "jhbong84@gmail.com":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    meal = db.query(database.Meal).filter(database.Meal.id == meal_id).first()
+    if not meal:
+        raise HTTPException(status_code=404, detail="Meal not found")
+        
+    try:
+        image_urls = json.loads(meal.image_urls) if meal.image_urls else []
+        analysis = await ai_engine.analyze_meal(image_urls, meal.description or "")
+        
+        meal.food_name = analysis['food']
+        meal.calories = analysis['calories']
+        meal.protein = analysis['protein']
+        meal.carbs = analysis['carbs']
+        meal.fat = analysis['fat']
+        meal.items_json = json.dumps(analysis['items'])
+        
+        db.commit()
+        return {"status": "success", "analysis": analysis}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Rerun failed: {str(e)}")
+
 @app.delete("/meal/{meal_id}")
 def delete_meal(
     meal_id: int, 
