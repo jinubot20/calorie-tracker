@@ -306,7 +306,10 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                 
                 CRITICAL INSTRUCTION FOR ACCURACY:
                 1. USER TEXT PRIORITY: If the user mentions a quantity or portion (e.g., "5 pieces", "half", "1 slice", "shared"), you MUST use that instead of the visual.
-                2. UNIT AWARENESS: Look at the "unit" field for each candidate. If the unit is "plate" and the user has a small side portion, adjust portion to 0.3 or similar.
+                2. UNIT CONVERSION RULE: If the user specifies a quantity in a small unit (e.g., "tablespoon", "teaspoon", "scoop") but the HPB candidate unit is larger (e.g., "cup", "bowl", "plate"), you MUST calculate the portion as a fraction.
+                   - Example: "4 tablespoons" of yoghurt vs "1 small cup (150g)" -> portion is ~0.4.
+                   - NEVER return a huge multiplier (like 68.0) for a single bowl/cup item unless the user explicitly says they ate 68 bowls.
+                3. UNIT AWARENESS: Look at the "unit" field for each candidate. If the unit is "plate" and the user has a small side portion, adjust portion to 0.3 or similar.
                 3. THE "BISCUIT" RULE: For Cream Crackers or Biscuits, the HPB database standard is 1 PIECE. If a user says "5 pieces", you MUST set portion to 5.0.
                 4. NO IMAGE RULE: If NO images are provided, assume standard serving (portion: 1.0) for identified items UNLESS a quantity is specified in the text.
                 5. THE "SLICE" RULE: Items like "Ngoh Hiang" or "Fish Cake" are often defined as a WHOLE ROLL. If the user mentions a "SLICE", adjust portion to ~0.1 - 0.2.
