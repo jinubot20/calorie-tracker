@@ -7,10 +7,27 @@ import logging
 import google.generativeai as genai
 from dotenv import load_dotenv
 
+import re
+
 load_dotenv()
 
 # Configuration
 DB_PATH = "calorie_tracker.db"
+
+def parse_portion_unit(portion_str):
+    """Parses strings like '1 plate(s) = 418g' to extract the unit."""
+    if not portion_str or portion_str == "-":
+        return "unit"
+    clean = portion_str.replace("(s)", "").strip()
+    match = re.search(r'\d+\s+(.*?)\s*=', clean)
+    if match:
+        return match.group(1).strip()
+    parts = clean.split()
+    if parts and not parts[0].isdigit():
+        return parts[0]
+    if len(parts) > 1:
+        return parts[1]
+    return "unit"
 
 # API Key Rotation Logic
 PRIMARY_KEY = os.getenv("GOOGLE_API_KEY")
@@ -271,7 +288,12 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                 all_matches = []
                 for item in identified_items:
                     candidates = get_semantic_candidates(item, limit=10)
-                    all_matches.append({"query": item, "candidates": candidates})
+                    # Clean candidates for the prompt to keep it small but include units
+                    clean_candidates = [
+                        {"name": c["name"], "crId": c["crId"], "unit": c.get("unit", "unit"), "desc": c["desc"]}
+                        for c in candidates
+                    ]
+                    all_matches.append({"query": item, "candidates": clean_candidates})
 
                 # Pass 3: Grounded Judging & Portions
                 judge_prompt = f"""
@@ -284,23 +306,24 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                 
                 CRITICAL INSTRUCTION FOR ACCURACY:
                 1. USER TEXT PRIORITY: If the user mentions a quantity or portion (e.g., "5 pieces", "half", "1 slice", "shared"), you MUST use that instead of the visual.
-                2. THE "BISCUIT" RULE: For Cream Crackers or Biscuits, the HPB database standard is 1 PIECE. If a user says "5 pieces", you MUST set portion to 5.0.
-                3. NO IMAGE RULE: If NO images are provided, assume standard serving (portion: 1.0) for identified items UNLESS a quantity is specified in the text.
-                4. THE "SLICE" RULE: Items like "Ngoh Hiang" or "Fish Cake" are often defined as a WHOLE ROLL. If the user mentions a "SLICE", adjust portion to ~0.1 - 0.2.
-                5. THE "DAB" RULE: For condiments like Sambal, Chili, or Soy Sauce, if it is a small side portion (e.g. in a plastic saucer or on the side), adjust portion to ~0.1 (approx 10-15 kcal). Do not treat it as a main dish.
-                6. STRICT PRIMARY FOCUS: Strictly OMIT any items that are at the edges, corners, or partially cropped out of the frame. Focus only on the central, intended subject of the meal.
-                7. PORTION SCALING: 1.0 = standard serving, 0.5 = half, 1.5 = large. Lean toward 1.0 for health-conscious users unless cues are obvious.
+                2. UNIT AWARENESS: Look at the "unit" field for each candidate. If the unit is "plate" and the user has a small side portion, adjust portion to 0.3 or similar.
+                3. THE "BISCUIT" RULE: For Cream Crackers or Biscuits, the HPB database standard is 1 PIECE. If a user says "5 pieces", you MUST set portion to 5.0.
+                4. NO IMAGE RULE: If NO images are provided, assume standard serving (portion: 1.0) for identified items UNLESS a quantity is specified in the text.
+                5. THE "SLICE" RULE: Items like "Ngoh Hiang" or "Fish Cake" are often defined as a WHOLE ROLL. If the user mentions a "SLICE", adjust portion to ~0.1 - 0.2.
+                6. THE "DAB" RULE: For condiments like Sambal, Chili, or Soy Sauce, if it is a small side portion (e.g. in a plastic saucer or on the side), adjust portion to ~0.1 (approx 10-15 kcal). Do not treat it as a main dish.
+                7. STRICT PRIMARY FOCUS: Strictly OMIT any items that are at the edges, corners, or partially cropped out of the frame. Focus only on the central, intended subject of the meal.
+                8. PORTION SCALING: 1.0 = standard serving, 0.5 = half, 1.5 = large. Lean toward 1.0 for health-conscious users unless cues are obvious.
                 
                 HPB CANDIDATES:
                 {json.dumps(all_matches)}
                 
-                If an item has NO reasonable match in the list, set "crId" to null and provide your own best estimate for macros.
+                If an item has NO reasonable match in the list, set "crId" to null and provide your own best estimate for macros and a standard "unit".
                 
                 Return JSON:
                 {{
                   "food_summary": "Overall Meal Name",
                   "items": [
-                    {{"name": "Item Name", "crId": "FXXXX", "portion": 1.0, "est_cal": 0, "est_p": 0, "est_c": 0, "est_f": 0}}
+                    {{"name": "Item Name", "crId": "FXXXX", "portion": 1.0, "unit": "unit", "est_cal": 0, "est_p": 0, "est_c": 0, "est_f": 0}}
                   ]
                 }}
                 """
