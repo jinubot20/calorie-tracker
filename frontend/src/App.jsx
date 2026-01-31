@@ -471,7 +471,7 @@ const App = () => {
             </div>
             {!isPublicView && (
               <div className="space-y-4">
-                {user?.email === 'jhbong84@gmail.com' && (
+                {view === 'admin' && (
                   <button 
                     onClick={() => rerunMeal(meal.id)}
                     disabled={meal.is_rerunning}
