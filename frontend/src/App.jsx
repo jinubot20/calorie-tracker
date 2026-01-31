@@ -298,11 +298,15 @@ const App = () => {
     setLoading(true);
     try {
       const res = await axios.post(`/meal/${mealId}/rerun`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      
+      // Update the currently selected meal data so the modal refreshes
       setSelectedMeal({ ...selectedMeal, ...res.data.analysis });
+      
+      // Force refresh the main background data
       fetchData(token, true);
       alert("Analysis updated successfully!");
     } catch (err) {
-      alert(err.response?.data?.detail || "Rerun failed.");
+      alert(err.response?.data?.detail || "Rerun failed. The AI might be busy, please try again in a moment.");
     } finally {
       setLoading(false);
     }
