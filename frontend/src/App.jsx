@@ -295,20 +295,22 @@ const App = () => {
 
   const rerunMeal = async (mealId) => {
     if (!confirm("Rerun AI analysis with current logic? This will overwrite previous values.")) return;
-    setLoading(true);
+    
+    // Create a local loading state for the button
+    const originalMeal = { ...selectedMeal };
+    setSelectedMeal({ ...selectedMeal, is_rerunning: true });
+    
     try {
       const res = await axios.post(`/meal/${mealId}/rerun`, {}, { headers: { Authorization: `Bearer ${token}` } });
       
       // Update the currently selected meal data so the modal refreshes
-      setSelectedMeal({ ...selectedMeal, ...res.data.analysis });
+      setSelectedMeal({ ...res.data.analysis, id: mealId, is_rerunning: false });
       
       // Force refresh the main background data
       fetchData(token, true);
-      alert("Analysis updated successfully!");
     } catch (err) {
+      setSelectedMeal({ ...originalMeal, is_rerunning: false });
       alert(err.response?.data?.detail || "Rerun failed. The AI might be busy, please try again in a moment.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -414,9 +416,14 @@ const App = () => {
                 {user?.email === 'jhbong84@gmail.com' && (
                   <button 
                     onClick={() => rerunMeal(meal.id)}
-                    className="w-full py-5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-black rounded-3xl transition-all border border-indigo-500/20 uppercase text-xs tracking-widest flex items-center justify-center gap-2"
+                    disabled={meal.is_rerunning}
+                    className="w-full py-5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-black rounded-3xl transition-all border border-indigo-500/20 uppercase text-xs tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    <Flame size={14} /> Rerun Analysis
+                    {meal.is_rerunning ? (
+                      <><Loader2 className="animate-spin" size={14} /> AI IS RE-ANALYZING...</>
+                    ) : (
+                      <><Flame size={14} /> Rerun Analysis</>
+                    )}
                   </button>
                 )}
                 <button 
