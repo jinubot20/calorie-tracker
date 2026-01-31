@@ -21,7 +21,6 @@ def get_rotating_key():
     if not SECONDARY_KEY:
         return PRIMARY_KEY
     
-    # We'll use a local file to persist the toggle state across restarts/worker processes
     toggle_file = "api_toggle.tmp"
     try:
         if os.path.exists(toggle_file):
@@ -119,7 +118,6 @@ def fetch_hpb_details(crId):
 
 def estimate_calories(image_paths: list = None, user_description: str = None):
     # Model Rotation Pool: We'll try the best ones first
-    # 2.0-flash-lite is great for text/simple, but 1.5-flash is robust for vision
     MODELS_TO_TRY = [
         'gemini-2.0-flash-lite',
         'gemini-1.5-flash-latest',
@@ -167,32 +165,92 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
 
                 desc_part = f"\nUser description: {user_description}" if user_description else ""
                 
+                # TASK 1: Identification & Label Detection
                 id_prompt = f"""
-                Identify every distinct food item and drink in this meal. 
+                Analyze this meal photo and description.
                 
+                TASK 1: DETECTION
+                Identify every distinct food item and drink. 
                 STRICT SUBJECT RULES:
-                1. PRIMARY ONLY: Focus ONLY on the items that are the main subject of the photo (usually centered and in focus). 
-                2. IGNORE EDGES: Completely ignore any food, drink, or containers at the extreme edges, borders, or corners of the frame. 
-                3. IGNORE CROPPED: If an item is partially cut off by the edge of the photo, OMIT it entirely.
-                4. IGNORE BACKGROUND: Ignore items belonging to other people or sitting in the background.
+                1. PRIMARY ONLY: Focus ONLY on the items that are the main subject.
+                2. IGNORE EDGES/CROPPED: Omit items at edges or partially cut off.
+                
+                TASK 2: NUTRITION LABEL DETECTION
+                Check if there is a clear, legible Nutrition Information Panel (NIP) or Food Label visible in the photo that specifies calories/macros for the primary item.
                 
                 {desc_part}
-                Respond with a simple comma-separated list of items.
-                Example: Hainanese Chicken Rice, Iced Coffee, Fried Egg
+                
+                Respond in the following format:
+                LABEL_FOUND: [YES/NO]
+                ITEMS: [Comma-separated list of items]
                 """
                 
                 response = model.generate_content([id_prompt] + contents)
                 text = response.text.strip()
-                if '\n' in text:
-                    for line in text.split('\n'):
-                        if ',' in line:
-                            identified_items = [x.strip() for x in line.split(',')]
-                            break
-                    else:
-                        identified_items = [x.strip() for x in text.split('\n')][-1].split(',')
-                else:
-                    identified_items = [x.strip() for x in text.split(',')]
                 
+                label_found = False
+                identified_items = []
+                
+                for line in text.split('\n'):
+                    if "LABEL_FOUND:" in line:
+                        label_found = "YES" in line.upper()
+                    if "ITEMS:" in line:
+                        identified_items = [x.strip() for x in line.split("ITEMS:")[1].split(",")]
+                
+                # If identifying items failed via format, fallback to previous simple logic
+                if not identified_items:
+                    if '\n' in text:
+                        identified_items = [x.strip() for x in text.split('\n')][-1].split(',')
+                    else:
+                        identified_items = [x.strip() for x in text.split(',')]
+
+                # OPTION A: DIRECT EXTRACTION FROM LABEL
+                if label_found:
+                    print("Nutrition Label detected! Switching to Direct Extraction mode...")
+                    extract_prompt = f"""
+                    You are a nutrition expert. A clear food label has been detected in this image.
+                    
+                    USER DESCRIPTION: {user_description}
+                    
+                    TASK:
+                    1. Read the nutrition label in the image.
+                    2. Extract: Calories, Protein, Carbs, and Fat.
+                    3. Calculate the total based on the quantity consumed mentioned in the description (if any).
+                    
+                    Return JSON:
+                    {{
+                      "food_summary": "Name of Product on Label",
+                      "calories": 0,
+                      "protein": 0,
+                      "carbs": 0,
+                      "fat": 0,
+                      "items": [
+                        {{"name": "Item from Label", "portion": 1.0}}
+                      ]
+                    }}
+                    """
+                    extract_resp = model.generate_content([extract_prompt] + contents)
+                    extract_text = extract_resp.text.strip()
+                    
+                    # JSON extraction
+                    if '```json' in extract_text:
+                        clean_json = extract_text.split('```json')[1].split('```')[0].strip()
+                    else:
+                        start = extract_text.find('{')
+                        end = extract_text.rfind('}')
+                        clean_json = extract_text[start:end+1] if start != -1 and end != -1 else extract_text
+                    
+                    res = json.loads(clean_json)
+                    return (
+                        res.get("food_summary", "Label Detected"),
+                        res.get("calories", 0),
+                        res.get("protein", 0),
+                        res.get("carbs", 0),
+                        res.get("fat", 0),
+                        res.get("items", [])
+                    )
+
+                # OPTION B: STANDARD 2-PASS PIPELINE
                 # Pass 2: Candidate Retrieval (Semantic Search)
                 all_matches = []
                 for item in identified_items:
@@ -279,20 +337,14 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                     print(f"Key {k_idx} + Model {m_name} hit rate limit, trying next permutation...")
                     continue
                 else:
-                    # If it's a 404 or something else, try next model/key
                     print(f"Non-429 error with {m_name}: {e}")
                     continue
 
     print(f"Pipeline Error after trying ALL keys and models: {last_error}")
     return "Unknown", 0, 0, 0, 0, []
 
-    print(f"Pipeline Error after trying all keys: {last_error}")
-    return "Unknown", 0, 0, 0, 0, []
-
 def generate_daily_summary(meals_list, target_calories):
-    """
-    Generates a human-friendly summary acting as a nutrition coach.
-    """
+    """Generates a human-friendly summary acting as a nutrition coach."""
     if not meals_list:
         return "No data recorded for today."
 
@@ -308,20 +360,16 @@ def generate_daily_summary(meals_list, target_calories):
     
     prompt = f"""
     You are an expert AI Nutrition Coach for the app "Fuel".
-    
     Your goal is to analyze the user's meals and give actionable, encouraging advice based on their target.
     User's Daily Calorie Target: {target_calories} kcal
     Total Calories Consumed Today: {total_consumed} kcal
-    
     Meals Logged Today: {json.dumps(meals_data)}
     
     Instructions:
     1. Compare consumed vs target. 
     2. Analyze macros (prioritize protein).
     3. Suggest ONE specific "cut" or "swap" to improve nutrition quality or hit the target better.
-    4. Keep the note brief (3-4 sentences), encouraging, and professional.
-    
-    Example: "You're currently 200kcal under your target—great room for a protein snack! I noticed lunch was quite high in fats from the dressing; swapping to a balsamic vinaigrette tomorrow could save you about 150kcal while keeping the flavor."
+    Keep the note brief (3-4 sentences), encouraging, and professional.
     """
     
     try:
