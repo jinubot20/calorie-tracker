@@ -120,8 +120,8 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     # Model Rotation Pool: We'll try the best ones first
     MODELS_TO_TRY = [
         'gemini-2.0-flash-lite',
-        'gemini-1.5-flash-latest',
-        'gemini-2.0-flash'
+        'gemini-flash-latest',
+        'gemini-pro-latest'
     ]
     
     # Try both keys
