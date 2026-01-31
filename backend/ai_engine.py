@@ -78,7 +78,7 @@ def get_semantic_candidates(query, limit=10):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT h.name, h.crId, h.description, e.embedding 
+            SELECT h.name, h.crId, h.description, e.embedding, h.default_unit, h.default_weight
             FROM hpb_foods h 
             JOIN hpb_embeddings e ON h.crId = e.crId
         """)
@@ -87,10 +87,17 @@ def get_semantic_candidates(query, limit=10):
         
         # 3. Rank by similarity
         scored_items = []
-        for name, crId, desc, emb_json in rows:
+        for name, crId, desc, emb_json, unit, weight in rows:
             emb = json.loads(emb_json)
             score = cosine_similarity(query_vec, emb)
-            scored_items.append({"name": name, "crId": crId, "desc": desc, "score": score})
+            scored_items.append({
+                "name": name, 
+                "crId": crId, 
+                "desc": desc, 
+                "score": score,
+                "unit": unit or "unit",
+                "weight": weight or 0
+            })
             
         scored_items.sort(key=lambda x: x["score"], reverse=True)
         return scored_items[:limit]
@@ -106,11 +113,13 @@ def fetch_hpb_details(crId):
         if response.status_code == 200:
             data = response.json()
             nutrients = data.get("calculatedFoodNutrients", {})
+            raw_portion = data.get("defaultPortion", "")
             return {
                 "calories": round(nutrients.get("energy", 0)),
                 "protein": round(nutrients.get("protein", 0)),
                 "carbs": round(nutrients.get("carbohydrate", 0)),
-                "fat": round(nutrients.get("fat", 0))
+                "fat": round(nutrients.get("fat", 0)),
+                "unit": parse_portion_unit(raw_portion)
             }
     except Exception as e:
         print(f"Error fetching HPB details for {crId}: {e}")
@@ -325,6 +334,7 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                             final_items.append({
                                 "name": item["name"], 
                                 "portion": portion,
+                                "unit": hpb_data.get("unit", "unit"),
                                 "cal": round(hpb_data["calories"]),
                                 "p": round(hpb_data["protein"]),
                                 "c": round(hpb_data["carbs"]),
@@ -339,6 +349,7 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                     final_items.append({
                         "name": item["name"], 
                         "portion": portion,
+                        "unit": item.get("unit", "unit"),
                         "cal": round(item.get("est_cal", 0)),
                         "p": round(item.get("est_p", 0)),
                         "c": round(item.get("est_c", 0)),

@@ -418,15 +418,18 @@ const App = () => {
                     {meal.items.map((item, idx) => (
                       <div key={idx} className="group/item relative px-3 py-2 bg-slate-800 rounded-xl border border-slate-700 flex items-center gap-3 shadow-sm hover:border-indigo-500/50 transition-all">
                         {!isPublicView ? (
-                          <input 
-                            type="number" 
-                            step="0.1"
-                            className="w-10 bg-slate-900 border border-slate-700 rounded-lg text-indigo-400 font-black text-xs text-center focus:ring-1 focus:ring-indigo-500 outline-none p-1"
-                            defaultValue={item.portion}
-                            onBlur={(e) => handleUpdatePortion(meal.id, idx, e.target.value)}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              className="w-10 bg-slate-900 border border-slate-700 rounded-lg text-indigo-400 font-black text-xs text-center focus:ring-1 focus:ring-indigo-500 outline-none p-1"
+                              defaultValue={item.portion}
+                              onBlur={(e) => handleUpdatePortion(meal.id, idx, e.target.value)}
+                            />
+                            <span className="text-[10px] font-bold text-slate-500 lowercase">{item.unit || 'unit'}</span>
+                          </div>
                         ) : (
-                          <span className="text-indigo-400 font-black text-xs">{item.portion}x</span>
+                          <span className="text-indigo-400 font-black text-xs">{item.portion} {item.unit || 'unit'}</span>
                         )}
                         <span className="text-xs font-bold text-slate-300">{item.name}</span>
                         {!isPublicView && (
