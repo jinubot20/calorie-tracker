@@ -304,7 +304,11 @@ const App = () => {
       const res = await axios.post(`/meal/${mealId}/rerun`, {}, { headers: { Authorization: `Bearer ${token}` } });
       
       // Update the currently selected meal data so the modal refreshes
-      setSelectedMeal({ ...res.data.analysis, id: mealId, is_rerunning: false });
+      setSelectedMeal({ 
+        ...originalMeal, // Keep original images/meta
+        ...res.data.analysis, // Overwrite with new AI analysis
+        is_rerunning: false 
+      });
       
       // Force refresh the main background data
       fetchData(token, true);
