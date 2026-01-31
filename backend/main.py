@@ -555,18 +555,28 @@ async def rerun_meal_analysis(
         raise HTTPException(status_code=404, detail="Meal not found")
         
     try:
-        image_urls = json.loads(meal.image_urls) if meal.image_urls else []
-        analysis = await ai_engine.analyze_meal(image_urls, meal.description or "")
+        image_paths = json.loads(meal.image_paths) if meal.image_paths else None
+        food_name, cals, p, c, f, items = ai_engine.estimate_calories(image_paths, meal.description or "")
         
-        meal.food_name = analysis['food']
-        meal.calories = analysis['calories']
-        meal.protein = analysis['protein']
-        meal.carbs = analysis['carbs']
-        meal.fat = analysis['fat']
-        meal.items_json = json.dumps(analysis['items'])
+        meal.food_name = food_name
+        meal.calories = int(cals)
+        meal.protein = int(p)
+        meal.carbs = int(c)
+        meal.fat = int(f)
+        meal.items_json = json.dumps(items)
         
         db.commit()
-        return {"status": "success", "analysis": analysis}
+        return {
+            "status": "success", 
+            "analysis": {
+                "food": food_name,
+                "calories": int(cals),
+                "protein": int(p),
+                "carbs": int(c),
+                "fat": int(f),
+                "items": items
+            }
+        }
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Rerun failed: {str(e)}")
