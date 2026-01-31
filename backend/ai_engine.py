@@ -79,7 +79,7 @@ def fetch_hpb_details(crId):
 
 def estimate_calories(image_paths: list = None, user_description: str = None):
     # Pass 1: Identification & Segmentation
-    model = genai.GenerativeModel('gemini-flash-lite-latest')
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     contents = []
     processed_temp_files = []
@@ -232,7 +232,7 @@ def generate_daily_summary(meals_list, target_calories):
     if not meals_list:
         return "No data recorded for today."
 
-    model = genai.GenerativeModel('gemini-flash-lite-latest')
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     meals_data = [
         {"food": m.food_name, "desc": m.description, "cal": m.calories, "p": m.protein, "c": m.carbs, "f": m.fat}
