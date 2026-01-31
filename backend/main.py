@@ -633,8 +633,15 @@ def get_admin_stats(db: Session = Depends(database.get_db), current_user: databa
         "id": m.id,
         "user": m.owner.name,
         "food": m.food_name,
+        "description": m.description,
+        "meal_type": m.meal_type,
         "calories": m.calories,
+        "protein": m.protein,
+        "carbs": m.carbs,
+        "fat": m.fat,
         "time": m.timestamp.isoformat(),
+        "items": json.loads(m.items_json) if m.items_json else [],
+        "images": [f"/uploads/{os.path.basename(p)}" for p in json.loads(m.image_paths)] if m.image_paths and m.image_paths.startswith('[') else [],
         "has_image": bool(m.image_paths and m.image_paths != "[]")
     } for m in recent_meals]
 

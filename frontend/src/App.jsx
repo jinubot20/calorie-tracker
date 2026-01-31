@@ -440,15 +440,22 @@ const App = () => {
       <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><ListTodo size={20} className="text-emerald-500"/> Recent Activity</h2>
       <div className="space-y-4">
         {adminData.recent_logs.map(log => (
-          <div key={log.id} className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex justify-between items-center">
+          <div 
+            key={log.id} 
+            onClick={() => setSelectedMeal(log)}
+            className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-all hover:border-indigo-500/50 group"
+          >
             <div>
-              <p className="text-xs font-black text-indigo-500 uppercase tracking-tighter">{log.user}</p>
+              <p className="text-xs font-black text-indigo-500 uppercase tracking-tighter group-hover:text-indigo-400 transition-colors">{log.user}</p>
               <p className="font-bold text-slate-200">{log.food}</p>
               <p className="text-[10px] text-slate-500">{new Date(log.time).toLocaleString()}</p>
             </div>
-            <div className="text-right">
-              <p className="font-black text-white">{log.calories} kcal</p>
-              {log.has_image && <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded uppercase font-black">Image ✓</span>}
+            <div className="text-right flex flex-col items-end gap-2">
+              <div className="text-right">
+                <p className="font-black text-white leading-none">{log.calories}</p>
+                <p className="text-[8px] font-bold text-slate-500 uppercase">kcal</p>
+              </div>
+              {log.has_image && <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded uppercase font-black border border-emerald-500/20">Image ✓</span>}
             </div>
           </div>
         ))}

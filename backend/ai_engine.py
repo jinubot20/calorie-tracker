@@ -2,9 +2,9 @@ import requests
 import json
 import sqlite3
 import os
+import math
 import logging
 import google.generativeai as genai
-from rapidfuzz import process, fuzz
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,14 +18,46 @@ HEADERS = {
     "Accept": "application/json"
 }
 
-def get_hpb_candidates():
-    """Retrieve all food names and crIds from local DB."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, crId, description FROM hpb_foods")
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"name": r[0], "crId": r[1], "desc": r[2]} for r in rows]
+def cosine_similarity(v1, v2):
+    dot_product = sum(x*y for x, y in zip(v1, v2))
+    magnitude1 = math.sqrt(sum(x*x for x in v1))
+    magnitude2 = math.sqrt(sum(x*x for x in v2))
+    return dot_product / (magnitude1 * magnitude2) if magnitude1 and magnitude2 else 0
+
+def get_semantic_candidates(query, limit=10):
+    """Retrieve top candidates from local DB using vector similarity."""
+    try:
+        # 1. Embed the query
+        res = genai.embed_content(
+            model="models/text-embedding-004", 
+            content=query, 
+            task_type="retrieval_query"
+        )
+        query_vec = res['embedding']
+        
+        # 2. Get all embeddings from DB
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT h.name, h.crId, h.description, e.embedding 
+            FROM hpb_foods h 
+            JOIN hpb_embeddings e ON h.crId = e.crId
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # 3. Rank by similarity
+        scored_items = []
+        for name, crId, desc, emb_json in rows:
+            emb = json.loads(emb_json)
+            score = cosine_similarity(query_vec, emb)
+            scored_items.append({"name": name, "crId": crId, "desc": desc, "score": score})
+            
+        scored_items.sort(key=lambda x: x["score"], reverse=True)
+        return scored_items[:limit]
+    except Exception as e:
+        print(f"Semantic search error: {e}")
+        return []
 
 def fetch_hpb_details(crId):
     """Fetch nutrition data for a specific crId."""
@@ -59,7 +91,6 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
             temp_path = f"{path}_std.jpg"
             try:
                 with PIL.Image.open(path) as img:
-                    # Handle MPO or multi-frame images by taking the first frame
                     if getattr(img, "n_frames", 1) > 1:
                         img.seek(0)
                     rgb_img = img.convert('RGB')
@@ -68,7 +99,6 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                 processed_temp_files.append(temp_path)
             except Exception as e:
                 print(f"Error standardizing image {path}: {e}")
-                # Fallback to original if conversion fails
                 try:
                     contents.append(PIL.Image.open(path))
                 except:
@@ -86,10 +116,8 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     
     try:
         response = model.generate_content([id_prompt] + contents)
-        # Use a regex or find logic to extract list from text if model talks too much
         text = response.text.strip()
-        if '\n' in text: # If model adds conversation
-            # Try to find a comma separated line
+        if '\n' in text:
             for line in text.split('\n'):
                 if ',' in line:
                     identified_items = [x.strip() for x in line.split(',')]
@@ -99,16 +127,10 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         else:
             identified_items = [x.strip() for x in text.split(',')]
         
-        # Pass 2: Candidate Retrieval (Local Fuzzy Search)
-        hpb_list = get_hpb_candidates()
+        # Pass 2: Candidate Retrieval (Semantic Search)
         all_matches = []
-        
         for item in identified_items:
-            # Get top 10 similar items from HPB list
-            matches = process.extract(item, [h['name'] for h in hpb_list], scorer=fuzz.WRatio, limit=10)
-            candidates = []
-            for match_name, score, idx in matches:
-                candidates.append(hpb_list[idx])
+            candidates = get_semantic_candidates(item, limit=10)
             all_matches.append({"query": item, "candidates": candidates})
 
         # Pass 3: Grounded Judging & Portions
@@ -146,20 +168,17 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         """
         
         judge_resp = model.generate_content([judge_prompt] + contents)
-        text = judge_resp.text.strip()
+        resp_text = judge_resp.text.strip()
         
         # Robust JSON extraction
-        if '```json' in text:
-            clean_json = text.split('```json')[1].split('```')[0].strip()
-        elif '```' in text:
-            clean_json = text.split('```')[1].split('```')[0].strip()
+        if '```json' in resp_text:
+            clean_json = resp_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in resp_text:
+            clean_json = resp_text.split('```')[1].split('```')[0].strip()
         else:
-            start = text.find('{')
-            end = text.rfind('}')
-            if start != -1 and end != -1:
-                clean_json = text[start:end+1]
-            else:
-                clean_json = text
+            start = resp_text.find('{')
+            end = resp_text.rfind('}')
+            clean_json = resp_text[start:end+1] if start != -1 and end != -1 else resp_text
 
         result_data = json.loads(clean_json)
         
@@ -173,7 +192,6 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         for item in result_data.get("items", []):
             portion = item.get("portion", 1.0)
             if item.get("crId"):
-                # Use HPB Data
                 hpb_data = fetch_hpb_details(item["crId"])
                 if hpb_data:
                     total_cal += round(hpb_data["calories"] * portion)
@@ -183,7 +201,6 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                     final_items.append({"name": item["name"], "portion": portion})
                     continue
             
-            # Fallback to LLM estimate
             total_cal += round(item.get("est_cal", 0) * portion)
             total_p += round(item.get("est_p", 0) * portion)
             total_c += round(item.get("est_c", 0) * portion)
@@ -200,13 +217,10 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         print(f"Pipeline Error: {e}")
         return "Unknown", 0, 0, 0, 0, []
     finally:
-        # Cleanup temp standardized images
         for f in processed_temp_files:
             if os.path.exists(f):
-                try:
-                    os.remove(f)
-                except:
-                    pass
+                try: os.remove(f)
+                except: pass
 
 def generate_daily_summary(meals_list, target_calories):
     """
