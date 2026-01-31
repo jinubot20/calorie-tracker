@@ -373,7 +373,7 @@ const App = () => {
     setTimeout(() => setCopiedDay(null), 2000);
   };
 
-  const MealDetailModal = ({ meal }) => {
+  const MealDetailModal = ({ meal, isAdminMode = false }) => {
     if (!meal) return null;
     return (
       <div 
@@ -471,7 +471,7 @@ const App = () => {
             </div>
             {!isPublicView && (
               <div className="space-y-4">
-                {view === 'admin' && (
+                {isAdminMode && (
                   <button 
                     onClick={() => rerunMeal(meal.id)}
                     disabled={meal.is_rerunning}
@@ -578,7 +578,7 @@ const App = () => {
           </div>
         ))}
       </div>
-      {selectedMeal && <MealDetailModal meal={selectedMeal} />}
+      {selectedMeal && <MealDetailModal meal={selectedMeal} isAdminMode={true} />}
     </div>
   );
 
