@@ -547,28 +547,36 @@ def delete_meal(
     db: Session = Depends(database.get_db),
     current_user: database.User = Depends(auth.get_current_user)
 ):
+    logger.info(f"Delete request received for meal_id: {meal_id} from user: {current_user.email}")
     meal = db.query(database.Meal).filter(
         database.Meal.id == meal_id, 
         database.Meal.user_id == current_user.id
     ).first()
     
     if not meal:
+        logger.warning(f"Meal {meal_id} not found for user {current_user.email}")
         raise HTTPException(status_code=404, detail="Meal not found")
     
-    # Identify the date of the meal to clear the daily summary
-    meal_date = meal.timestamp.date().isoformat()
-    
-    db.delete(meal)
-    
-    # Clear the new persistent summary for that specific date
-    db.query(database.DailySummary).filter(
-        database.DailySummary.user_id == current_user.id,
-        database.DailySummary.date == meal_date
-    ).delete()
-    
-    current_user.cached_summary = None
-    db.commit()
-    return {"status": "success"}
+    try:
+        # Identify the date of the meal to clear the daily summary
+        meal_date = meal.timestamp.date().isoformat()
+        
+        db.delete(meal)
+        
+        # Clear the new persistent summary for that specific date
+        db.query(database.DailySummary).filter(
+            database.DailySummary.user_id == current_user.id,
+            database.DailySummary.date == meal_date
+        ).delete()
+        
+        current_user.cached_summary = None
+        db.commit()
+        logger.info(f"Meal {meal_id} deleted successfully.")
+        return {"status": "success"}
+    except Exception as e:
+        logger.exception(f"Error deleting meal {meal_id}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/settings")
 def update_settings(
