@@ -581,6 +581,44 @@ async def rerun_meal_analysis(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Rerun failed: {str(e)}")
 
+@app.post("/meal/{meal_id}/update-items")
+async def update_meal_items(
+    meal_id: int,
+    payload: dict,
+    db: Session = Depends(database.get_db),
+    current_user: database.User = Depends(auth.get_current_user)
+):
+    meal = db.query(database.Meal).filter(
+        database.Meal.id == meal_id, 
+        database.Meal.user_id == current_user.id
+    ).first()
+    if not meal:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    
+    try:
+        new_items = payload.get("items", [])
+        
+        # Calculate new totals
+        total_cal, total_p, total_c, total_f = 0, 0, 0, 0
+        for item in new_items:
+            p = float(item.get("portion", 1.0))
+            total_cal += int(float(item.get("cal", 0)) * p)
+            total_p += int(float(item.get("p", 0)) * p)
+            total_c += int(float(item.get("c", 0)) * p)
+            total_f += int(float(item.get("f", 0)) * p)
+            
+        meal.items_json = json.dumps(new_items)
+        meal.calories = total_cal
+        meal.protein = total_p
+        meal.carbs = total_c
+        meal.fat = total_f
+        
+        db.commit()
+        return {"status": "success", "calories": total_cal, "protein": total_p, "carbs": total_c, "fat": total_f}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/meal/{meal_id}")
 def delete_meal(
     meal_id: int, 

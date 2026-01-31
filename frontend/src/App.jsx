@@ -318,6 +318,42 @@ const App = () => {
     }
   };
 
+  const updateMealItems = async (mealId, newItems) => {
+    try {
+      const res = await axios.post(`/meal/${mealId}/update-items`, { items: newItems }, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      
+      // Update local state for both modal and background
+      setSelectedMeal({ 
+        ...selectedMeal, 
+        items: newItems,
+        calories: res.data.calories,
+        protein: res.data.protein,
+        carbs: res.data.carbs,
+        fat: res.data.fat
+      });
+      fetchData(token, true);
+    } catch (err) {
+      alert("Failed to update meal items.");
+    }
+  };
+
+  const handleRemoveItem = (mealId, itemIdx) => {
+    if (!confirm("Remove this item and recalculate calories?")) return;
+    const newItems = selectedMeal.items.filter((_, idx) => idx !== itemIdx);
+    updateMealItems(mealId, newItems);
+  };
+
+  const handleUpdatePortion = (mealId, itemIdx, newPortion) => {
+    const p = parseFloat(newPortion);
+    if (isNaN(p) || p <= 0) return;
+    const newItems = selectedMeal.items.map((item, idx) => 
+      idx === itemIdx ? { ...item, portion: p } : item
+    );
+    updateMealItems(mealId, newItems);
+  };
+
   const saveSettings = async () => {
     try {
       let url = '/settings?';
@@ -378,11 +414,29 @@ const App = () => {
                 <span className="text-[10px] font-black uppercase px-2 py-1 bg-slate-800 text-indigo-400 rounded-lg border border-slate-700">{meal.meal_type || 'Meal'}</span>
                 <h2 className="text-2xl font-black text-white leading-tight mt-2 mb-2 tracking-tight break-words">{meal.food}</h2>
                 {meal.items && meal.items.length > 0 && (
-                  <div className="flex flex-wrap gap-3 mb-4">
+                  <div className="flex flex-wrap gap-3 mb-6">
                     {meal.items.map((item, idx) => (
-                      <div key={idx} className="px-3 py-1 bg-slate-800 rounded-xl border border-slate-700 flex items-center gap-2 shadow-sm">
-                        <span className="text-indigo-400 font-black text-xs">{item.portion}x</span>
+                      <div key={idx} className="group/item relative px-3 py-2 bg-slate-800 rounded-xl border border-slate-700 flex items-center gap-3 shadow-sm hover:border-indigo-500/50 transition-all">
+                        {!isPublicView ? (
+                          <input 
+                            type="number" 
+                            step="0.1"
+                            className="w-10 bg-slate-900 border border-slate-700 rounded-lg text-indigo-400 font-black text-xs text-center focus:ring-1 focus:ring-indigo-500 outline-none p-1"
+                            defaultValue={item.portion}
+                            onBlur={(e) => handleUpdatePortion(meal.id, idx, e.target.value)}
+                          />
+                        ) : (
+                          <span className="text-indigo-400 font-black text-xs">{item.portion}x</span>
+                        )}
                         <span className="text-xs font-bold text-slate-300">{item.name}</span>
+                        {!isPublicView && (
+                          <button 
+                            onClick={() => handleRemoveItem(meal.id, idx)}
+                            className="text-slate-600 hover:text-red-500 transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

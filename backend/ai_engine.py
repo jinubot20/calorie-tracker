@@ -225,7 +225,14 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                       "carbs": 0,
                       "fat": 0,
                       "items": [
-                        {{"name": "Item from Label", "portion": 1.0}}
+                        {{
+                          "name": "Item from Label", 
+                          "portion": 1.0,
+                          "cal": 0,
+                          "p": 0,
+                          "c": 0,
+                          "f": 0
+                        }}
                       ]
                     }}
                     """
@@ -315,14 +322,28 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
                             total_p += round(hpb_data["protein"] * portion)
                             total_c += round(hpb_data["carbs"] * portion)
                             total_f += round(hpb_data["fat"] * portion)
-                            final_items.append({"name": item["name"], "portion": portion})
+                            final_items.append({
+                                "name": item["name"], 
+                                "portion": portion,
+                                "cal": round(hpb_data["calories"]),
+                                "p": round(hpb_data["protein"]),
+                                "c": round(hpb_data["carbs"]),
+                                "f": round(hpb_data["fat"])
+                            })
                             continue
                     
                     total_cal += round(item.get("est_cal", 0) * portion)
                     total_p += round(item.get("est_p", 0) * portion)
                     total_c += round(item.get("est_c", 0) * portion)
                     total_f += round(item.get("est_f", 0) * portion)
-                    final_items.append({"name": item["name"], "portion": portion})
+                    final_items.append({
+                        "name": item["name"], 
+                        "portion": portion,
+                        "cal": round(item.get("est_cal", 0)),
+                        "p": round(item.get("est_p", 0)),
+                        "c": round(item.get("est_c", 0)),
+                        "f": round(item.get("est_f", 0))
+                    })
 
                 for f in processed_temp_files:
                     if os.path.exists(f):
