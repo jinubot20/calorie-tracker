@@ -17,7 +17,7 @@ def generate_and_store_embeddings():
     
     # 1. Get items that don't have embeddings yet
     cursor.execute("""
-        SELECT h.crId, h.name || ' ' || h.description 
+        SELECT h.crId, h.name || ' ' || COALESCE(h.description, '')
         FROM hpb_foods h
         LEFT JOIN hpb_embeddings e ON h.crId = e.crId
         WHERE e.embedding IS NULL
