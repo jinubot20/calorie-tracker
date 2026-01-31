@@ -705,8 +705,8 @@ const App = () => {
         </div>
 
         <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><History size={20} className="text-indigo-500" /> Meal Journey</h2>
-        <div className="space-y-10">
-          {isRefreshing && (
+        <div className="space-y-10 min-h-[400px]">
+          {isRefreshing && data.grouped_history.length === 0 && (
             <div className="animate-pulse"><div className="flex items-center gap-3 mb-4"><div className="w-20 h-5 bg-slate-800 rounded-full"></div><div className="flex-1 h-[1px] bg-slate-800"></div></div><div className="bg-slate-900/50 border border-slate-800 p-4 rounded-[28px] flex items-center mb-4"><div className="w-20 h-20 bg-slate-800 rounded-2xl mr-4"></div><div className="flex-1"><div className="w-24 h-3 bg-slate-800 rounded mb-2"></div><div className="w-32 h-4 bg-slate-800 rounded"></div></div></div></div>
           )}
           {data.grouped_history.length > 0 ? data.grouped_history.map((day) => (
