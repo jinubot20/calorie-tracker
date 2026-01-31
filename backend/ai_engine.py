@@ -365,18 +365,26 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     return "Unknown", 0, 0, 0, 0, []
 
 def generate_daily_summary(meals_list, target_calories):
-    """Generates a human-friendly summary acting as a nutrition coach."""
+    """Generates a human-friendly summary acting as a nutrition coach with retry logic."""
     if not meals_list:
         return "No data recorded for today."
 
-    configure_genai()
-    model = genai.GenerativeModel('gemini-2.0-flash-lite')
+    # Use Matrix Rotation for summaries too
+    MODELS_TO_TRY = [
+        'gemini-2.0-flash-lite',
+        'gemini-flash-latest',
+        'gemini-pro-latest'
+    ]
     
+    keys_to_try = [0, 1] if SECONDARY_KEY else [0]
+    current_key_idx = 0 if get_rotating_key() == PRIMARY_KEY else 1
+    if current_key_idx == 1:
+        keys_to_try = [1, 0]
+
     meals_data = [
         {"food": m.food_name, "desc": m.description, "cal": m.calories, "p": m.protein, "c": m.carbs, "f": m.fat}
         for m in meals_list
     ]
-    
     total_consumed = sum(m['cal'] for m in meals_data)
     
     prompt = f"""
@@ -392,10 +400,19 @@ def generate_daily_summary(meals_list, target_calories):
     3. Suggest ONE specific "cut" or "swap" to improve nutrition quality or hit the target better.
     Keep the note brief (3-4 sentences), encouraging, and professional.
     """
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating daily summary: {e}")
-        return None
+
+    last_error = None
+    for k_idx in keys_to_try:
+        configure_genai(k_idx)
+        for m_name in MODELS_TO_TRY:
+            try:
+                model = genai.GenerativeModel(m_name)
+                response = model.generate_content(prompt)
+                return response.text.strip()
+            except Exception as e:
+                last_error = e
+                print(f"Summary generation error with Key {k_idx} and Model {m_name}: {e}")
+                continue
+
+    print(f"Final Summary error after trying all: {last_error}")
+    return None
