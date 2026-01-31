@@ -20,6 +20,9 @@ class User(Base):
     share_enabled = Column(Integer, default=0) # 0=False, 1=True
     share_token = Column(String, unique=True, index=True, nullable=True)
     
+    is_verified = Column(Integer, default=0) # 0=False, 1=True
+    verification_token = Column(String, unique=True, index=True, nullable=True)
+    
     cached_summary = Column(String, nullable=True)
     summary_date = Column(String, nullable=True) # YYYY-MM-DD
     meals = relationship("Meal", back_populates="owner")

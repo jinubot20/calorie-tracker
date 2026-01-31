@@ -13,8 +13,8 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     """
     Analyzes multiple images and/or description to estimate calories and macros.
     """
-    # Using gemini-2.5-flash for best accuracy
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    # Using gemini-flash-lite-latest for the highest free-tier quota (1,500 RPD)
+    model = genai.GenerativeModel('gemini-flash-lite-latest')
     
     contents = []
     
@@ -85,7 +85,7 @@ def generate_daily_summary(meals_list, target_calories):
     if not meals_list:
         return "No data recorded for today."
 
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-flash-lite-latest')
     
     meals_data = [
         {"food": m.food_name, "desc": m.description, "cal": m.calories, "p": m.protein, "c": m.carbs, "f": m.fat}

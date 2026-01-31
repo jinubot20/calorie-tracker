@@ -7,7 +7,7 @@ import axios from 'axios';
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
 
 const App = () => {
-  const [view, setView] = useState('loading'); // loading, login, register, dashboard
+  const [view, setView] = useState('loading'); // loading, login, register, dashboard, verify
   const [token, setToken] = useState(localStorage.getItem('jinu_token'));
   const [user, setUser] = useState(null);
   const [data, setData] = useState({ target: 2000, consumed: 0, protein: 0, carbs: 0, fat: 0, daily_summary: '', grouped_history: [], trend: [] });
@@ -58,6 +58,7 @@ const App = () => {
   const [shareConfig, setShareConfig] = useState({ enabled: false, token: null });
   const [isPublicView, setIsPublicView] = useState(false);
   const [adminData, setAdminStats] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const fileInputRef = useRef(null);
 
   const mealTypes = [
@@ -78,6 +79,13 @@ const App = () => {
   const shareTokenFromUrl = window.location.pathname.startsWith('/share/') ? window.location.pathname.split('/')[2] : null;
 
   useEffect(() => {
+    if (window.location.pathname === '/verify') {
+      setView('verify');
+      const v_token = queryParams.get('token');
+      handleVerifyEmail(v_token);
+      return;
+    }
+
     if (shareTokenFromUrl) {
       setIsPublicView(true);
       fetchPublicData(shareTokenFromUrl);
@@ -189,8 +197,9 @@ const App = () => {
     setView('login');
   };
 
-  const fetchData = async (authToken) => {
-    setLoading(true);
+  const fetchData = async (authToken, silent = false) => {
+    if (!silent) setLoading(true);
+    else setIsRefreshing(true);
     try {
       const response = await axios.get('/stats', {
         headers: { Authorization: `Bearer ${authToken}` }
@@ -200,6 +209,7 @@ const App = () => {
       console.error("Fetch failed", err);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -223,20 +233,33 @@ const App = () => {
     }
   };
 
+  const handleVerifyEmail = async (v_token) => {
+    if (!v_token) {
+      setAuthError("No verification token provided.");
+      return;
+    }
+    try {
+      await axios.get(`/auth/verify-email?token=${v_token}`);
+      alert("Email verified successfully! You can now log in.");
+      window.location.href = '/';
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || "Verification failed. Token may be expired.");
+    }
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setAuthError('');
     setLoading(true);
     try {
-      const response = await axios.post('/auth/register', {
+      await axios.post('/auth/register', {
         email,
         password,
         name,
         telegram_id: telegramIdFromUrl
       });
-      const newToken = response.data.access_token;
-      localStorage.setItem('jinu_token', newToken);
-      setToken(newToken);
+      alert("Registration successful! Please check your email to verify your account before logging in.");
+      setView('login');
     } catch (err) {
       setAuthError(err.response?.data?.detail || 'Registration failed');
     } finally {
@@ -285,7 +308,7 @@ const App = () => {
       });
       setShowUploadModal(false);
       resetUploadForm();
-      fetchData(token);
+      fetchData(token, true);
     } catch (err) {
       if (err.response?.status === 429) {
         alert("⚠️ AI Quota Limit Reached\n\nYour app is working fine, but the AI service is temporarily overloaded. This is an external limit, not a bug. Please wait a minute and try again!");
@@ -429,6 +452,27 @@ const App = () => {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+
+  if (view === 'verify') return (
+    <div className="min-h-screen bg-[#0F172A] text-slate-100 flex flex-col justify-center px-6 py-12">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+        <h1 className="text-sm font-black tracking-[0.4em] text-indigo-500 mb-6 uppercase opacity-80">VERIFICATION</h1>
+        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 py-10 px-8 rounded-[40px] shadow-2xl">
+          {authError ? (
+            <>
+              <div className="text-red-500 mb-6 font-bold">{authError}</div>
+              <button onClick={() => window.location.href = '/'} className="text-indigo-400 font-bold underline">Back to Login</button>
+            </>
+          ) : (
+            <div className="flex flex-col items-center">
+              <Loader2 className="animate-spin text-indigo-500 mb-4" size={32} />
+              <p className="font-bold">Verifying your email...</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -682,6 +726,21 @@ const App = () => {
         </h2>
         
         <div className="space-y-10">
+          {isRefreshing && (
+            <div className="animate-pulse">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-20 h-5 bg-slate-800 rounded-full"></div>
+                <div className="flex-1 h-[1px] bg-slate-800"></div>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-[28px] flex items-center mb-4">
+                <div className="w-20 h-20 bg-slate-800 rounded-2xl mr-4"></div>
+                <div className="flex-1">
+                  <div className="w-24 h-3 bg-slate-800 rounded mb-2"></div>
+                  <div className="w-32 h-4 bg-slate-800 rounded"></div>
+                </div>
+              </div>
+            </div>
+          )}
           {data.grouped_history.length > 0 ? data.grouped_history.map((day) => (
             <div key={day.date} className="relative">
               {/* Date Header */}

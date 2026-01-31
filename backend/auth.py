@@ -22,6 +22,20 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
+def create_verification_token(email: str):
+    expire = datetime.utcnow() + timedelta(hours=24)
+    to_encode = {"exp": expire, "sub": email, "purpose": "email_verification"}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_email_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("purpose") != "email_verification":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:

@@ -12,6 +12,9 @@ import auth
 import os
 import shutil
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 import logging
 
@@ -27,6 +30,44 @@ logger = logging.getLogger(__name__)
 # Singapore Time Offset (UTC+8)
 def get_sg_time():
     return datetime.utcnow() + timedelta(hours=8)
+
+def send_verification_email(email: str, token: str):
+    sender_email = os.getenv("GMAIL_USER")
+    sender_password = os.getenv("GMAIL_APP_PASSWORD")
+    frontend_url = os.getenv("FRONTEND_URL", "https://foodfuel.app")
+    
+    verification_link = f"{frontend_url}/verify?token={token}"
+    
+    msg = MIMEMultipart()
+    msg['From'] = f"Fuel App <{sender_email}>"
+    msg['To'] = email
+    msg['Subject'] = "Verify your Fuel account"
+
+    body = f"""
+    Hi there,
+
+    Welcome to Fuel! Please click the link below to verify your email address and activate your account:
+
+    {verification_link}
+
+    If you did not sign up for Fuel, please ignore this email.
+
+    Stay healthy,
+    The Fuel Bot 🗝️
+    """
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, email, msg.as_string())
+        server.quit()
+        logger.info(f"Verification email sent to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send email to {email}: {e}")
+        return False
 
 app = FastAPI()
 
@@ -54,7 +95,7 @@ class Token(BaseModel):
     token_type: str
 
 # Auth Routes
-@app.post("/auth/register", response_model=Token)
+@app.post("/auth/register")
 def register(user_data: UserCreate, db: Session = Depends(database.get_db)):
     try:
         logger.debug(f"Registering user: {user_data.email}")
@@ -63,22 +104,44 @@ def register(user_data: UserCreate, db: Session = Depends(database.get_db)):
             raise HTTPException(status_code=400, detail="Email already registered")
         
         hashed_pwd = auth.get_password_hash(user_data.password)
-        logger.debug(f"DEBUG HASH GENERATED: {hashed_pwd}")
+        v_token = auth.create_verification_token(user_data.email)
+        
         new_user = database.User(
             email=user_data.email,
             hashed_password=hashed_pwd,
             name=user_data.name,
-            telegram_id=user_data.telegram_id
+            telegram_id=user_data.telegram_id,
+            is_verified=0,
+            verification_token=v_token
         )
         db.add(new_user)
         db.commit()
-        db.refresh(new_user)
         
-        access_token = auth.create_access_token(data={"sub": new_user.email})
-        return {"access_token": access_token, "token_type": "bearer"}
+        # Send email
+        send_verification_email(user_data.email, v_token)
+        
+        return {"status": "success", "message": "Verification email sent. Please check your inbox."}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Error during registration")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/auth/verify-email")
+def verify_email(token: str, db: Session = Depends(database.get_db)):
+    email = auth.verify_email_token(token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    
+    user = db.query(database.User).filter(database.User.email == email, database.User.verification_token == token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    
+    user.is_verified = 1
+    user.verification_token = None
+    db.commit()
+    
+    return {"status": "success", "message": "Email verified successfully. You can now log in."}
 
 @app.post("/auth/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
@@ -91,8 +154,17 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Please verify your email address before logging in.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
         access_token = auth.create_access_token(data={"sub": user.email})
         return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Error during login")
         raise HTTPException(status_code=500, detail=str(e))
