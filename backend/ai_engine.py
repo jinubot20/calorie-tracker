@@ -2,6 +2,7 @@ import requests
 import json
 import sqlite3
 import os
+import logging
 import google.generativeai as genai
 from rapidfuzz import process, fuzz
 from dotenv import load_dotenv
@@ -49,10 +50,29 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     model = genai.GenerativeModel('gemini-flash-lite-latest')
     
     contents = []
+    processed_temp_files = []
+    
     if image_paths:
         import PIL.Image
         for path in image_paths:
-            contents.append(PIL.Image.open(path))
+            # Standardize image to RGB JPEG to avoid unsupported formats like MPO
+            temp_path = f"{path}_std.jpg"
+            try:
+                with PIL.Image.open(path) as img:
+                    # Handle MPO or multi-frame images by taking the first frame
+                    if getattr(img, "n_frames", 1) > 1:
+                        img.seek(0)
+                    rgb_img = img.convert('RGB')
+                    rgb_img.save(temp_path, 'JPEG')
+                contents.append(PIL.Image.open(temp_path))
+                processed_temp_files.append(temp_path)
+            except Exception as e:
+                print(f"Error standardizing image {path}: {e}")
+                # Fallback to original if conversion fails
+                try:
+                    contents.append(PIL.Image.open(path))
+                except:
+                    pass
 
     desc_part = f"\nUser description: {user_description}" if user_description else ""
     
@@ -66,7 +86,18 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     
     try:
         response = model.generate_content([id_prompt] + contents)
-        identified_items = [x.strip() for x in response.text.split(',')]
+        # Use a regex or find logic to extract list from text if model talks too much
+        text = response.text.strip()
+        if '\n' in text: # If model adds conversation
+            # Try to find a comma separated line
+            for line in text.split('\n'):
+                if ',' in line:
+                    identified_items = [x.strip() for x in line.split(',')]
+                    break
+            else:
+                identified_items = [x.strip() for x in text.split('\n')][-1].split(',')
+        else:
+            identified_items = [x.strip() for x in text.split(',')]
         
         # Pass 2: Candidate Retrieval (Local Fuzzy Search)
         hpb_list = get_hpb_candidates()
@@ -88,8 +119,12 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         Identified Items: {", ".join(identified_items)}
         
         For each item identified, look at the photo and pick the best match from the provided HPB candidates.
-        Also, estimate the portion (1.0 = standard, 0.5 = half, 1.5 = large). 
-        Prioritize user text for portions (e.g., if user says "half", use 0.5).
+        
+        CRITICAL INSTRUCTION FOR ACCURACY:
+        1. USER TEXT PRIORITY: If the user mentions a quantity or portion (e.g., "half", "1 slice", "2 pieces", "shared"), you MUST use that instead of the visual.
+        2. THE "SLICE" RULE: In the HPB database, items like "Ngoh Hiang" or "Fish Cake" are often defined as a WHOLE ROLL (e.g. 500+ kcal). If the user mentions a "SLICE" or "PIECE", you must adjust the portion significantly downward (e.g. 0.1 to 0.2). Never match a single slice to 1.0 of a whole roll.
+        3. PORTION SCALING: 1.0 = standard serving, 0.5 = half, 1.5 = large.
+        4. PRIMARY FOCUS: Ignore background items or plates belonging to other people.
         
         HPB CANDIDATES:
         {json.dumps(all_matches)}
@@ -106,7 +141,21 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
         """
         
         judge_resp = model.generate_content([judge_prompt] + contents)
-        clean_json = judge_resp.text.strip().replace('```json', '').replace('```', '')
+        text = judge_resp.text.strip()
+        
+        # Robust JSON extraction
+        if '```json' in text:
+            clean_json = text.split('```json')[1].split('```')[0].strip()
+        elif '```' in text:
+            clean_json = text.split('```')[1].split('```')[0].strip()
+        else:
+            start = text.find('{')
+            end = text.rfind('}')
+            if start != -1 and end != -1:
+                clean_json = text[start:end+1]
+            else:
+                clean_json = text
+
         result_data = json.loads(clean_json)
         
         # Final Calculation
@@ -145,3 +194,52 @@ def estimate_calories(image_paths: list = None, user_description: str = None):
     except Exception as e:
         print(f"Pipeline Error: {e}")
         return "Unknown", 0, 0, 0, 0, []
+    finally:
+        # Cleanup temp standardized images
+        for f in processed_temp_files:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except:
+                    pass
+
+def generate_daily_summary(meals_list, target_calories):
+    """
+    Generates a human-friendly summary acting as a nutrition coach.
+    """
+    if not meals_list:
+        return "No data recorded for today."
+
+    model = genai.GenerativeModel('gemini-flash-lite-latest')
+    
+    meals_data = [
+        {"food": m.food_name, "desc": m.description, "cal": m.calories, "p": m.protein, "c": m.carbs, "f": m.fat}
+        for m in meals_list
+    ]
+    
+    total_consumed = sum(m['cal'] for m in meals_data)
+    
+    prompt = f"""
+    You are an expert AI Nutrition Coach for the app "Fuel".
+    
+    Your goal is to analyze the user's meals and give actionable, encouraging advice based on their target.
+    User's Daily Calorie Target: {target_calories} kcal
+    Total Calories Consumed Today: {total_consumed} kcal
+    
+    Meals Logged Today: {json.dumps(meals_data)}
+    
+    Instructions:
+    1. Compare consumed vs target. 
+    2. Analyze macros (prioritize protein).
+    3. Suggest ONE specific "cut" or "swap" to improve nutrition quality or hit the target better.
+    4. Keep the note brief (3-4 sentences), encouraging, and professional.
+    
+    Example: "You're currently 200kcal under your target—great room for a protein snack! I noticed lunch was quite high in fats from the dressing; swapping to a balsamic vinaigrette tomorrow could save you about 150kcal while keeping the flavor."
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating daily summary: {e}")
+        return None
